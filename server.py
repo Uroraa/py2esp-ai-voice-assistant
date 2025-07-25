@@ -22,7 +22,7 @@ MAX_PACKET_SIZE = 1024
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 gen_ai.configure(api_key="AIzaSyB4De60bhnM7anDuBmygcpWnbmTe-uSzY8")
-model = gen_ai.GenerativeModel("gemini-2.0-flash-lite")
+model = gen_ai.GenerativeModel("gemini-2.5-flash-lite")
 
 access_key = "FpoCjJic8WNWbTsJssh63tI5cG3yfe84hDGoN7vFS850koUZKfDRQA=="
 porcupine = pvporcupine.create(
