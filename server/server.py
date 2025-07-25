@@ -12,6 +12,8 @@ import pvporcupine
 import pyaudio
 import struct
 import google.generativeai as gen_ai
+import os
+from dotenv import load_dotenv
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
@@ -21,7 +23,9 @@ ESP32_PORT = 5005
 MAX_PACKET_SIZE = 1024
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-gen_ai.configure(api_key="AIzaSyB4De60bhnM7anDuBmygcpWnbmTe-uSzY8")
+load_dotenv()  
+API_KEY = os.getenv("GOOGLE_API_KEY")
+gen_ai.configure(api_key=API_KEY)
 model = gen_ai.GenerativeModel("gemini-2.5-flash-lite")
 
 access_key = "FpoCjJic8WNWbTsJssh63tI5cG3yfe84hDGoN7vFS850koUZKfDRQA=="
