@@ -2,23 +2,34 @@
 #include <WiFiUdp.h>
 #include "driver/i2s.h"
 
-#define I2S_BCLK_PIN    18
-#define I2S_LRC_PIN     17
-#define I2S_DOUT_PIN    16
-#define LED_PIN         48
-#define RELAY_PIN       5
+QueueHandle_t audioQueue;
+WiFiUDP UDP; 
 
 const char *ssid = "Etek Office";
 const char *password = "Taphaco@189";
 // const char *ssid = "Sxmh2";
 // const char *password = "123456789@";
-
 const int local_port = 5005;
-bool udpStarted;
-char incomingTextPacket[512];
-uint8_t incomingAudioPacket[2048];
 
-WiFiUDP UDP; 
+#define I2S_BCLK_PIN    18
+#define I2S_LRC_PIN     17
+#define I2S_DOUT_PIN    16
+#define LED_PIN         48
+#define RELAY_PIN       5
+#define MAX_PACKET_SIZE 1100
+#define QUEUE_LENGTH 10
+
+bool udpStarted;
+
+enum PacketType : uint8_t {
+  PACKET_TEXT  = 0x02,
+  PACKET_AUDIO = 0x03
+};
+
+struct UDP_Packet {
+  uint16_t len;
+  uint8_t buf[1100];
+};
 
 bool setupI2S() {
   const i2s_config_t i2s_config = {
@@ -48,11 +59,53 @@ bool setupI2S() {
   return true;
 }
 
-void play_audio(const uint16_t *audio_data, size_t len) {
-  size_t bytes_written;
-  i2s_write(I2S_NUM_0, audio_data, len, &bytes_written, portMAX_DELAY);
-  // Serial.println(bytes_written);
-  // Serial.println(len);
+void packet_recv(void* pv){
+  UDP_Packet pkt;
+  while (true) {
+    int packet_size = UDP.parsePacket();
+    if (packet_size > 0 && packet_size <= MAX_PACKET_SIZE){
+      int length = UDP.read(pkt.buf, packet_size);
+      pkt.len = (uint16_t) length; 
+      xQueueSend(audioQueue, &pkt, portMAX_DELAY);
+    }
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+}
+
+void packet_handle(void* pv){
+  static bool headerStripped = false;
+  UDP_Packet pkt;
+  while (true) {
+    if (xQueueReceive(audioQueue, &pkt, portMAX_DELAY) == pdTRUE){
+      uint8_t type = pkt.buf[0];
+      if (type == PACKET_TEXT) {
+        int lenText = pkt.len - 1;
+        pkt.buf[lenText + 1] = '\0';
+        Serial.println((char*)pkt.buf + 1);  // text hiển thị
+        
+          if (lenText == 1 && (pkt.buf[1] == '0' || pkt.buf[1] == '1')) {
+              digitalWrite(RELAY_PIN, pkt.buf[1] ? HIGH : LOW);
+              Serial.println(pkt.buf[1] ? "-> đã bật" : "-> đã tắt");
+          }
+         
+      }else if (type == PACKET_AUDIO) {
+        // Audio packet: buf layout = [type(1)] [seq(2 bytes)] [payload...]
+        size_t offset = 1 + 2;
+        size_t dataLen = pkt.len - offset;
+        uint8_t* dataPtr = pkt.buf + offset;
+        
+        if (!headerStripped){
+          dataPtr += 44;
+          dataLen -= 44;
+          headerStripped = true;
+        }
+        size_t bytesWritten;
+        i2s_write(I2S_NUM_0, dataPtr, dataLen, &bytesWritten, portMAX_DELAY);
+      }else{
+        Serial.println("Không nhận dc gói tin");
+      }
+    }
+  }
 }
 
 void setup() {
@@ -62,7 +115,6 @@ void setup() {
   digitalWrite(LED_PIN, LOW);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
-  delay(10);
 
   WiFi.begin(ssid, password);
   udpStarted = UDP.begin(local_port);
@@ -80,51 +132,21 @@ void setup() {
     Serial.println("UDP channel");
   }
 
+  audioQueue = xQueueCreate(
+    QUEUE_LENGTH,
+    sizeof(UDP_Packet)
+  );
+
   while (!setupI2S()) {
     Serial.println("i2s setting up...");
     delay(500);
   }
   Serial.println("i2s ok");
+
+  xTaskCreatePinnedToCore(packet_recv, "Packet Receiver", 4096, nullptr, 2, nullptr, 1);
+  xTaskCreatePinnedToCore(packet_handle, "Packet Handle", 8192, nullptr, 1, nullptr, 0);
 }
 
 void loop() {
-  int packet_size = UDP.parsePacket();
-  if (packet_size <= 0) return;
-
-  uint8_t header;
-  UDP.read(&header, 1);
-  
-  if (header == 0x02) {
-    int lenText = UDP.read(incomingTextPacket, sizeof(incomingTextPacket) - 1);
-    if (lenText > 0) {
-    incomingTextPacket[lenText] = 0;
-    Serial.println(incomingTextPacket);  // text hiển thị
-    
-      if (lenText == 1 && (incomingTextPacket[0] == '0' || incomingTextPacket[0] == '1')) {
-          uint8_t flag = incomingTextPacket[0] - '0';
-          digitalWrite(RELAY_PIN, flag ? HIGH : LOW);
-          Serial.println(flag ? "-> bật đèn" : "-> tắt đèn");
-      }
-    } 
-  } else if (header == 0x03) {
-    int lenAudio = UDP.read(incomingAudioPacket, sizeof(incomingAudioPacket));
-
-    if (lenAudio > 0) {
-      if (lenAudio % 2 != 0) lenAudio--;
-      play_audio((uint16_t*)(incomingAudioPacket + 44), lenAudio - 44);
-      // for (int i = 45; i < 50; i++) {
-      //   Serial.print("Byte ");
-      //   Serial.print(i);
-      //   Serial.print(": 0x");
-      //   if (incomingAudioPacket[i] < 0x10) Serial.print("0");
-      //   Serial.println(incomingAudioPacket[i], HEX);
-      // }   
-    }
-
-    // packet_size = UDP.parsepacket();
-    // continue;
-
-  } else {
-    Serial.println("không nhận dc gói tin");
-  }
+  vTaskDelay(pdMS_TO_TICKS(1000));
 }
