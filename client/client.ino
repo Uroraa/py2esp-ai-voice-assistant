@@ -1,28 +1,33 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include "driver/i2s.h"
+#include <string.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 QueueHandle_t audioQueue;
-WiFiUDP UDP; 
+WiFiUDP UDP;
 
-const char *ssid = "Etek Office";
-const char *password = "Taphaco@189";
-// const char *ssid = "Sxmh2";
-// const char *password = "123456789@";
-const int local_port = 5005;
+const char* ssid = "Etek Office";
+const char* password = "Taphaco@189";
+// const char* ssid = "Sxmh2";
+// const char* password = "123456789@";
 
-#define I2S_BCLK_PIN    18
-#define I2S_LRC_PIN     17
-#define I2S_DOUT_PIN    16
-#define LED_PIN         48
-#define RELAY_PIN       5
+#define I2S_BCLK_PIN 18
+#define I2S_LRC_PIN 17
+#define I2S_DOUT_PIN 16
+#define LED_PIN 48
+#define RELAY_PIN 5
 #define MAX_PACKET_SIZE 1100
 #define QUEUE_LENGTH 10
+#define SERVER_IP "192.168.25.98"
+#define LOCAL_PORT 5005
 
 bool udpStarted;
 
 enum PacketType : uint8_t {
-  PACKET_TEXT  = 0x02,
+  PACKET_TEXT = 0x02,
   PACKET_AUDIO = 0x03
 };
 
@@ -47,9 +52,9 @@ bool setupI2S() {
   };
 
   const i2s_pin_config_t pin_config = {
-    .bck_io_num = I2S_BCLK_PIN,   
-    .ws_io_num = I2S_LRC_PIN,     
-    .data_out_num = I2S_DOUT_PIN,  
+    .bck_io_num = I2S_BCLK_PIN,
+    .ws_io_num = I2S_LRC_PIN,
+    .data_out_num = I2S_DOUT_PIN,
     .data_in_num = I2S_PIN_NO_CHANGE
   };
 
@@ -59,53 +64,65 @@ bool setupI2S() {
   return true;
 }
 
-void packet_recv(void* pv){
+void packet_recv(void* pv) {
   UDP_Packet pkt;
   while (true) {
     int packet_size = UDP.parsePacket();
-    if (packet_size > 0 && packet_size <= MAX_PACKET_SIZE){
+    if (packet_size > 0 && packet_size <= MAX_PACKET_SIZE) {
       int length = UDP.read(pkt.buf, packet_size);
-      pkt.len = (uint16_t) length; 
+      pkt.len = (uint16_t)length;
       xQueueSend(audioQueue, &pkt, portMAX_DELAY);
     }
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 }
 
-void packet_handle(void* pv){
+void packet_handle(void* pv) {
   static bool headerStripped = false;
   UDP_Packet pkt;
   while (true) {
-    if (xQueueReceive(audioQueue, &pkt, portMAX_DELAY) == pdTRUE){
+    if (xQueueReceive(audioQueue, &pkt, portMAX_DELAY) == pdTRUE) {
       uint8_t type = pkt.buf[0];
       if (type == PACKET_TEXT) {
         int lenText = pkt.len - 1;
         pkt.buf[lenText + 1] = '\0';
         Serial.println((char*)pkt.buf + 1);  // text hiển thị
-        
-          if (lenText == 1 && (pkt.buf[1] == '0' || pkt.buf[1] == '1')) {
-              digitalWrite(RELAY_PIN, pkt.buf[1] ? HIGH : LOW);
-              Serial.println(pkt.buf[1] ? "-> đã bật" : "-> đã tắt");
-          }
-         
-      }else if (type == PACKET_AUDIO) {
+
+        if (lenText == 1 && (pkt.buf[1] == '0' || pkt.buf[1] == '1')) {
+          digitalWrite(RELAY_PIN, pkt.buf[1] ? HIGH : LOW);
+          Serial.println(pkt.buf[1] ? "-> đã bật" : "-> đã tắt");
+        }
+
+      } else if (type == PACKET_AUDIO) {
         // Audio packet: buf layout = [type(1)] [seq(2 bytes)] [payload...]
-        size_t offset = 1 + 2;
+        size_t offset = 1;
         size_t dataLen = pkt.len - offset;
         uint8_t* dataPtr = pkt.buf + offset;
-        
-        if (!headerStripped){
+
+        if (!headerStripped) {
           dataPtr += 44;
           dataLen -= 44;
           headerStripped = true;
         }
         size_t bytesWritten;
         i2s_write(I2S_NUM_0, dataPtr, dataLen, &bytesWritten, portMAX_DELAY);
-      }else{
+      } else {
         Serial.println("Không nhận dc gói tin");
       }
     }
   }
+}
+
+void ready_status(){
+  char is_ready[] = "READY";
+  struct sockaddr_in dest_addr;
+  dest_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+  dest_addr.sin_family = AF_INET;
+  dest_addr.sin_port = htons(LOCAL_PORT);
+
+  int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+  sendto(sock, is_ready, strlen(is_ready), 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+  close(sock);
 }
 
 void setup() {
@@ -116,26 +133,26 @@ void setup() {
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
 
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  udpStarted = UDP.begin(local_port);
 
-  while(WiFi.status() != WL_CONNECTED){
+  while (WiFi.status() != WL_CONNECTED) {
     Serial.println("Connecting...");
     delay(1000);
   }
-  
+
   Serial.println("WiFi connected");
-  Serial.print("IP address: "); 
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
+  udpStarted = UDP.begin(LOCAL_PORT);
   if (udpStarted) {
     Serial.println("UDP channel");
   }
 
   audioQueue = xQueueCreate(
     QUEUE_LENGTH,
-    sizeof(UDP_Packet)
-  );
+    sizeof(UDP_Packet));
 
   while (!setupI2S()) {
     Serial.println("i2s setting up...");

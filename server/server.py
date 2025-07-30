@@ -4,6 +4,7 @@ import asyncio
 from edge_tts import Communicate
 from pydub import AudioSegment
 import time
+from datetime import datetime 
 import speech_recognition as sr
 import pvporcupine
 import pyaudio
@@ -15,10 +16,13 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
 # Cấu hình UDP
-ESP32_IP   = '192.168.39.78'   # IP ESP32
+UDP_IP   = '0.0.0.0'
+ESP32_IP   = '192.168.36.173'   # IP ESP32
 ESP32_PORT = 5005
 MAX_PACKET_SIZE = 1024
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind((UDP_IP, ESP32_PORT))
+data, addr = sock.recvfrom(MAX_PACKET_SIZE) 
 
 load_dotenv()  
 API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -42,7 +46,7 @@ def covert_wav(input_path = "temp.wav", output_path = "output.wav"):
 
 async def text_to_wav_bytes(text):
     esp_output = "esp32_ready.wav"
-    communicate = Communicate(text, voice = "vi-VN-NamMinhNeural", volume= "+30%")
+    communicate = Communicate(text, voice = "vi-VN-NamMinhNeural", volume= "+50%")
     await communicate.save("temp.wav")
     covert_wav(input_path="temp.wav", output_path=esp_output)
 
@@ -66,6 +70,7 @@ def is_control_command(prompt: str) -> bool:
     keywords = ["bật", "tắt", "mở", "đóng"]
     return any(k in prompt for k in keywords)
 
+now = datetime.now().strftime("%A, %d-%m-%Y")
 
 pa = pyaudio.PyAudio()
 stream = pa.open(format=pyaudio.paInt16,
@@ -135,7 +140,7 @@ while True:
                             print("Lệnh không hợp lệ")
                     else:
                         response = model.generate_content([
-                            {"role": "user", "parts": [f"{prompt}\nPhản hồi ngắn gọn, dưới 1000 byte, chỉ ở dạng văn bản thường (plain text). Không sử dụng Markdown in đậm (**) hoặc in nghiêng (_), không tiêu đề (#)."]}
+                            {"role": "user", "parts": [f"{prompt}\nPhản hồi ngắn gọn, dưới 1000 byte, chỉ ở dạng văn bản thường (plain text). Không sử dụng Markdown in đậm (**) hoặc in nghiêng (_), không tiêu đề (#). Chú ý thời gian hiện tại là {now}."]},
                         ])
 
                         reply = response.text
@@ -162,6 +167,16 @@ while True:
 
                 except sr.UnknownValueError:
                     print("Không nhận diện được giọng nói")
+
+                    errorReply = "Không nhận diện được giọng nói, vui lòng thử lại."
+                    audio_bytes = asyncio.run(text_to_wav_bytes(errorReply))
+                    total_len = len(audio_bytes)
+                    sock.sendto(b'\x02' + errorReply.encode('utf-8'), (ESP32_IP, ESP32_PORT))
+                    # Gửi từng gói nhỏ
+                    for i in range(0, total_len, MAX_PACKET_SIZE):
+                        chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
+                        sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
+                        time.sleep(0.03)
                 except sr.RequestError as e:
                     print("Lỗi kết nối đến dịch vụ nhận diện giọng nói:", e)
                 except KeyboardInterrupt:
