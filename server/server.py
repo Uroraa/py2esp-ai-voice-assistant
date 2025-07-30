@@ -103,6 +103,7 @@ while True:
                     if is_control_command(prompt):
                         print("Bạn đã nói lệnh:", prompt)
                         audio_bytes = asyncio.run(text_to_wav_bytes(prompt))
+                        audio_bytes = asyncio.run(text_to_wav_bytes(prompt))
                         total_len = len(audio_bytes)
                         sock.sendto(b'\x02' + prompt.encode('utf-8'), (ESP32_IP, ESP32_PORT))
                         # Gửi từng gói nhỏ
@@ -110,10 +111,12 @@ while True:
                             chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
                             sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
                             time.sleep(0.03)
+                            time.sleep(0.03)
 
                         lower_text = prompt.lower()
                         if "bật" in lower_text:
                             order = "Đã bật"
+                            audio_bytes = asyncio.run(text_to_wav_bytes(order))
                             audio_bytes = asyncio.run(text_to_wav_bytes(order))
                             total_len = len(audio_bytes)
                             sock.sendto(b'\x02' + b"1", (ESP32_IP, ESP32_PORT))
@@ -122,10 +125,12 @@ while True:
                                 chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
                                 sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
                                 time.sleep(0.03)
+                                time.sleep(0.03)
                             print("Đã gửi lệnh bật đến ESP32")
 
                         elif "tắt" in lower_text:
                             order = "Đã tắt"
+                            audio_bytes = asyncio.run(text_to_wav_bytes(order))
                             audio_bytes = asyncio.run(text_to_wav_bytes(order))
                             total_len = len(audio_bytes)
                             sock.sendto(b'\x02' + b"0", (ESP32_IP, ESP32_PORT))
@@ -133,6 +138,7 @@ while True:
                             for i in range(0, total_len, MAX_PACKET_SIZE):
                                 chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
                                 sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
+                                time.sleep(0.03)
                                 time.sleep(0.03)
                             print("Đã gửi lệnh tắt đến ESP32")
 
@@ -147,6 +153,7 @@ while True:
 
                         print("Bạn đã nói:", prompt)
                         audio_bytes = asyncio.run(text_to_wav_bytes(prompt))
+                        audio_bytes = asyncio.run(text_to_wav_bytes(prompt))
                         total_len = len(audio_bytes)
                         sock.sendto(b'\x02' + prompt.encode('utf-8'), (ESP32_IP, ESP32_PORT))
                         # Gửi từng gói nhỏ
@@ -154,8 +161,10 @@ while True:
                             chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
                             sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
                             time.sleep(0.03)
+                            time.sleep(0.03)
 
                         print(reply)
+                        audio_bytes = asyncio.run(text_to_wav_bytes(reply))
                         audio_bytes = asyncio.run(text_to_wav_bytes(reply))
                         total_len = len(audio_bytes)
                         sock.sendto(b'\x02' + reply.encode('utf-8'), (ESP32_IP, ESP32_PORT))
@@ -163,6 +172,7 @@ while True:
                         for i in range(0, total_len, MAX_PACKET_SIZE):
                             chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
                             sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
+                            time.sleep(0.03)
                             time.sleep(0.03)
 
                 except sr.UnknownValueError:

@@ -9,17 +9,17 @@
 QueueHandle_t audioQueue;
 WiFiUDP UDP;
 
-const char* ssid = "Etek Office";
-const char* password = "Taphaco@189";
-// const char* ssid = "Sxmh2";
-// const char* password = "123456789@";
+// const char *ssid = "Etek Office";
+// const char *password = "Taphaco@189";
+const char *ssid = "Sxmh2";
+const char *password = "123456789@";
 
-#define I2S_BCLK_PIN 18
-#define I2S_LRC_PIN 17
-#define I2S_DOUT_PIN 16
-#define LED_PIN 48
-#define RELAY_PIN 5
-#define MAX_PACKET_SIZE 1100
+#define I2S_BCLK_PIN    18
+#define I2S_LRC_PIN     17
+#define I2S_DOUT_PIN    16
+#define LED_PIN         48
+#define RELAY_PIN       5
+#define MAX_PACKET_SIZE 1200
 #define QUEUE_LENGTH 10
 #define SERVER_IP "192.168.25.98"
 #define LOCAL_PORT 5005
@@ -33,7 +33,7 @@ enum PacketType : uint8_t {
 
 struct UDP_Packet {
   uint16_t len;
-  uint8_t buf[1100];
+  uint8_t buf[1200];
 };
 
 bool setupI2S() {
@@ -154,16 +154,14 @@ void setup() {
     QUEUE_LENGTH,
     sizeof(UDP_Packet));
 
-  while (!setupI2S()) {
-    Serial.println("i2s setting up...");
-    delay(500);
+  if (setupI2S()) {
+    Serial.println("i2s is ok");
   }
-  Serial.println("i2s ok");
 
   xTaskCreatePinnedToCore(packet_recv, "Packet Receiver", 4096, nullptr, 2, nullptr, 1);
   xTaskCreatePinnedToCore(packet_handle, "Packet Handle", 8192, nullptr, 1, nullptr, 0);
 }
 
 void loop() {
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  vTaskDelay(pdMS_TO_TICKS(500));
 }
