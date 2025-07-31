@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <esp_wifi.h>
 #include "driver/i2s.h"
 #include <string.h>
 #include <sys/socket.h>
@@ -9,22 +10,24 @@
 QueueHandle_t audioQueue;
 WiFiUDP UDP;
 
-// const char *ssid = "Etek Office";
-// const char *password = "Taphaco@189";
-const char *ssid = "Sxmh2";
-const char *password = "123456789@";
+const char* ssid = "Etek Office";
+const char* password = "Taphaco@189";
+// const char *ssid = "Sxmh2";
+// const char *password = "123456789@";
 
-#define I2S_BCLK_PIN    18
-#define I2S_LRC_PIN     17
-#define I2S_DOUT_PIN    16
-#define LED_PIN         48
-#define RELAY_PIN       5
+#define I2S_BCLK_PIN 18
+#define I2S_LRC_PIN 17
+#define I2S_DOUT_PIN 16
+#define LED_PIN 48
+#define RELAY_PIN 5
 #define MAX_PACKET_SIZE 1200
 #define QUEUE_LENGTH 10
 #define SERVER_IP "192.168.25.98"
 #define LOCAL_PORT 5005
 
 bool udpStarted;
+unsigned long lastReadyTime = 0;
+const unsigned long readyInterval = 5000;
 
 enum PacketType : uint8_t {
   PACKET_TEXT = 0x02,
@@ -113,7 +116,7 @@ void packet_handle(void* pv) {
   }
 }
 
-void ready_status(){
+void ready_status() {
   char is_ready[] = "READY";
   struct sockaddr_in dest_addr;
   dest_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
@@ -121,7 +124,7 @@ void ready_status(){
   dest_addr.sin_port = htons(LOCAL_PORT);
 
   int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-  sendto(sock, is_ready, strlen(is_ready), 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+  sendto(sock, is_ready, strlen(is_ready), 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
   close(sock);
 }
 
@@ -144,6 +147,7 @@ void setup() {
   Serial.println("WiFi connected");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+  esp_wifi_set_max_tx_power(44);
 
   udpStarted = UDP.begin(LOCAL_PORT);
   if (udpStarted) {
@@ -163,5 +167,10 @@ void setup() {
 }
 
 void loop() {
-  vTaskDelay(pdMS_TO_TICKS(500));
+  unsigned long now = millis();
+
+  if (now - lastReadyTime >= readyInterval) {
+    lastReadyTime = now;
+    ready_status();
+  }
 }

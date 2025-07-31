@@ -17,12 +17,19 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 # Cấu hình UDP
 UDP_IP   = '0.0.0.0'
-ESP32_IP   = '192.168.36.173'   # IP ESP32
+ESP32_IP   = '192.168.38.65'   # IP ESP32
 ESP32_PORT = 5005
 MAX_PACKET_SIZE = 1024
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, ESP32_PORT))
-data, addr = sock.recvfrom(MAX_PACKET_SIZE) 
+sock.settimeout(60)  # Thời gian chờ tối đa cho mỗi gói tin
+try:
+    data, addr = sock.recvfrom(MAX_PACKET_SIZE)
+    print(f"Thiết bị {addr} đã sẵn sàng")
+    ESP32_IP = addr[0]  # Cập nhật lại IP của ESP32 từ gói tin nhận được
+except socket.timeout:
+    print("Thiết bị chưa sẵn sàng, chuẩn bị gửi lệnh đầu tiên...")
+    data, addr = None, None
 
 load_dotenv()  
 API_KEY = os.getenv("GOOGLE_API_KEY")
@@ -81,28 +88,28 @@ stream = pa.open(format=pyaudio.paInt16,
 
 print("Đang chờ lệnh đánh thức...")
 
-while True:
-    pcm = stream.read(porcupine.frame_length, exception_on_overflow=False)
-    pcm = struct.unpack_from("h" * porcupine.frame_length, pcm)
+try:
+    while True:
+        pcm = stream.read(porcupine.frame_length, exception_on_overflow=False)
+        pcm = struct.unpack_from("h" * porcupine.frame_length, pcm)
 
-    result = porcupine.process(pcm)
-    if result >= 0:
-        print("Đã đánh thức!")
+        result = porcupine.process(pcm)
+        if result >= 0:
+            print("Đã đánh thức!")
 
-        recognizer = sr.Recognizer()
-        mic = sr.Microphone()  
+            recognizer = sr.Recognizer()
+            mic = sr.Microphone()  
 
-        print("Đang nghe...")
-
-        while True:
-            with mic as source:
-                recognizer.adjust_for_ambient_noise(source, duration=1)
-                audio = recognizer.listen(source, phrase_time_limit=10)
-                try:
-                    prompt = recognizer.recognize_google(audio, language='vi-VN')
+            print("Đang nghe...")
+            #if data == "READY":
+            while True:
+                try:               
+                    with mic as source:
+                        recognizer.adjust_for_ambient_noise(source, duration=1)
+                        audio = recognizer.listen(source, phrase_time_limit=10)
+                        prompt = recognizer.recognize_google(audio, language='vi-VN')
                     if is_control_command(prompt):
                         print("Bạn đã nói lệnh:", prompt)
-                        audio_bytes = asyncio.run(text_to_wav_bytes(prompt))
                         audio_bytes = asyncio.run(text_to_wav_bytes(prompt))
                         total_len = len(audio_bytes)
                         sock.sendto(b'\x02' + prompt.encode('utf-8'), (ESP32_IP, ESP32_PORT))
@@ -111,12 +118,10 @@ while True:
                             chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
                             sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
                             time.sleep(0.03)
-                            time.sleep(0.03)
 
                         lower_text = prompt.lower()
                         if "bật" in lower_text:
                             order = "Đã bật"
-                            audio_bytes = asyncio.run(text_to_wav_bytes(order))
                             audio_bytes = asyncio.run(text_to_wav_bytes(order))
                             total_len = len(audio_bytes)
                             sock.sendto(b'\x02' + b"1", (ESP32_IP, ESP32_PORT))
@@ -125,12 +130,10 @@ while True:
                                 chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
                                 sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
                                 time.sleep(0.03)
-                                time.sleep(0.03)
                             print("Đã gửi lệnh bật đến ESP32")
 
                         elif "tắt" in lower_text:
                             order = "Đã tắt"
-                            audio_bytes = asyncio.run(text_to_wav_bytes(order))
                             audio_bytes = asyncio.run(text_to_wav_bytes(order))
                             total_len = len(audio_bytes)
                             sock.sendto(b'\x02' + b"0", (ESP32_IP, ESP32_PORT))
@@ -138,7 +141,6 @@ while True:
                             for i in range(0, total_len, MAX_PACKET_SIZE):
                                 chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
                                 sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
-                                time.sleep(0.03)
                                 time.sleep(0.03)
                             print("Đã gửi lệnh tắt đến ESP32")
 
@@ -153,7 +155,6 @@ while True:
 
                         print("Bạn đã nói:", prompt)
                         audio_bytes = asyncio.run(text_to_wav_bytes(prompt))
-                        audio_bytes = asyncio.run(text_to_wav_bytes(prompt))
                         total_len = len(audio_bytes)
                         sock.sendto(b'\x02' + prompt.encode('utf-8'), (ESP32_IP, ESP32_PORT))
                         # Gửi từng gói nhỏ
@@ -161,10 +162,8 @@ while True:
                             chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
                             sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
                             time.sleep(0.03)
-                            time.sleep(0.03)
 
                         print(reply)
-                        audio_bytes = asyncio.run(text_to_wav_bytes(reply))
                         audio_bytes = asyncio.run(text_to_wav_bytes(reply))
                         total_len = len(audio_bytes)
                         sock.sendto(b'\x02' + reply.encode('utf-8'), (ESP32_IP, ESP32_PORT))
@@ -172,7 +171,6 @@ while True:
                         for i in range(0, total_len, MAX_PACKET_SIZE):
                             chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
                             sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
-                            time.sleep(0.03)
                             time.sleep(0.03)
 
                 except sr.UnknownValueError:
@@ -191,9 +189,14 @@ while True:
                     print("Lỗi kết nối đến dịch vụ nhận diện giọng nói:", e)
                 except KeyboardInterrupt:
                     print("Dừng chương trình")
-                
-                '''finally:
-                    if stream is not None:
-                        stream.close()
-                    if porcupine is not None:
-                        porcupine.delete()'''
+                    break
+            break
+
+except KeyboardInterrupt:
+    print("Dừng chương trình")
+finally:
+    sock.close()
+    '''if stream is not None:
+        stream.close()
+    if porcupine is not None:
+        porcupine.delete()'''
