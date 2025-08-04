@@ -12,8 +12,8 @@ WiFiUDP UDP;
 
 const char* ssid = "Etek Office";
 const char* password = "Taphaco@189";
-// const char *ssid = "Sxmh2";
-// const char *password = "123456789@";
+// const char* ssid = "Sxmh2";
+// const char* password = "123456789@";
 
 #define I2S_BCLK_PIN 18
 #define I2S_LRC_PIN 17
