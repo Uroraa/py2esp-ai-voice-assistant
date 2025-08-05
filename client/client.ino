@@ -10,10 +10,10 @@
 QueueHandle_t audioQueue;
 WiFiUDP UDP;
 
-const char* ssid = "Etek Office";
-const char* password = "Taphaco@189";
-// const char* ssid = "Sxmh2";
-// const char* password = "123456789@";
+const char* ssid = "Sxmh1";
+const char* password = "123456789@";
+// const char* ssid = "SonS22";
+// const char* password = "9999999999";
 
 #define I2S_BCLK_PIN 18
 #define I2S_LRC_PIN 17
@@ -22,7 +22,7 @@ const char* password = "Taphaco@189";
 #define RELAY_PIN 5
 #define MAX_PACKET_SIZE 1200
 #define QUEUE_LENGTH 10
-#define SERVER_IP "192.168.25.98"
+#define SERVER_IP "192.168.2.17"
 #define LOCAL_PORT 5005
 
 bool udpStarted;
@@ -92,12 +92,13 @@ void packet_handle(void* pv) {
         Serial.println((char*)pkt.buf + 1);  // text hiển thị
 
         if (lenText == 1 && (pkt.buf[1] == '0' || pkt.buf[1] == '1')) {
-          digitalWrite(RELAY_PIN, pkt.buf[1] ? HIGH : LOW);
-          Serial.println(pkt.buf[1] ? "-> đã bật" : "-> đã tắt");
+          bool on = (pkt.buf[1] == '1');
+          digitalWrite(RELAY_PIN, on ? HIGH : LOW);
+          Serial.println(on ? "-> đã bật" : "-> đã tắt");
         }
 
       } else if (type == PACKET_AUDIO) {
-        // Audio packet: buf layout = [type(1)] [seq(2 bytes)] [payload...]
+        // Audio packet: buf layout = [type(1)] [payload...]
         size_t offset = 1;
         size_t dataLen = pkt.len - offset;
         uint8_t* dataPtr = pkt.buf + offset;
@@ -144,6 +145,7 @@ void setup() {
     delay(1000);
   }
 
+  WiFi.setSleep(false);
   Serial.println("WiFi connected");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());

@@ -135,7 +135,7 @@ try:
                         
                         lower_text = prompt.lower()
                         for cmd in ACTIONS:
-                            if cmd in lower_text:
+                            if re.search(rf"\b{re.escape(cmd)}\b", lower_text):
                                 order = f"Đã {cmd}"
                                 audio_bytes = asyncio.run(text_to_wav_bytes(order))
                                 total_len = len(audio_bytes)
@@ -189,11 +189,11 @@ try:
 except KeyboardInterrupt:
     print("Dừng chương trình")
 finally:
-    with contextlib.suppress(Exception):
-        sock.close()
-    if stream is not None:
+    #with contextlib.suppress(Exception):
+    sock.close()
+    '''if stream is not None:
         with contextlib.suppress(Exception):
             stream.close()
     if porcupine is not None:
         with contextlib.suppress(Exception):
-            porcupine.delete()
+            porcupine.delete()'''
