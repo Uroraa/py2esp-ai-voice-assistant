@@ -8,6 +8,7 @@ from edge_tts import Communicate
 from pydub import AudioSegment
 import time
 from datetime import datetime 
+import pytz
 import speech_recognition as sr
 import pvporcupine
 import pyaudio
@@ -19,9 +20,20 @@ import contextlib
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 
-ACTIONS = ["bật", "mở", "khởi động", "kích hoạt", "bắt đầu", "tắt", "đóng", "dừng", "ngưng", "ngừng"]
-NEGATIONS = ["đừng", "không", "thôi", "chưa"]
-FUZZY_THRESHOLD = 80  
+ACTIONS = {
+    "bật": 1,
+    "mở": 1,
+    "khởi động": 1,
+    "kích hoạt": 1,
+    "bắt đầu": 1,
+    "tắt": 0,
+    "đóng": 0,
+    "dừng": 0,
+    "ngưng": 0,
+    "ngừng": 0
+}
+NEGATIONS = ["đừng", "không", "thôi", "chữa", "chưa"]
+FUZZY_THRESHOLD = 80
 
 # Detect command
 def contain_action_word(text: str, candidates: List[str]) -> bool:
@@ -97,8 +109,6 @@ async def text_to_wav_bytes(text):
     with open("temp.wav", "rb") as f:
         return f.read()'''
 
-now = datetime.now().strftime("%A, %d-%m-%Y %H:%M")
-
 # Wake word detection
 pa = pyaudio.PyAudio()
 stream = pa.open(format=pyaudio.paInt16,
@@ -130,16 +140,16 @@ try:
                         recognizer.adjust_for_ambient_noise(source, duration=1)
                         audio = recognizer.listen(source, phrase_time_limit=10)
                         prompt = recognizer.recognize_google(audio, language='vi-VN')
+                        lower_text = prompt.lower()
                     if is_control_command(prompt):
                         print("Bạn đã nói lệnh:", prompt)
                         
-                        lower_text = prompt.lower()
-                        for cmd in ACTIONS:
+                        for cmd, code in ACTIONS.items():
                             if re.search(rf"\b{re.escape(cmd)}\b", lower_text):
                                 order = f"Đã {cmd}"
                                 audio_bytes = asyncio.run(text_to_wav_bytes(order))
                                 total_len = len(audio_bytes)
-                                sock.sendto(b'\x02' + b"1", (ESP32_IP, ESP32_PORT))
+                                sock.sendto(b'\x02' + str(code).encode(), (ESP32_IP, ESP32_PORT))
 
                                 # Gửi từng gói nhỏ
                                 for i in range(0, total_len, MAX_PACKET_SIZE):
@@ -148,7 +158,9 @@ try:
                                     time.sleep(0.03)
                                 print(f"Đã gửi lệnh {cmd} đến ESP32")
                                 break
+                            
                     else:
+                        now = datetime.now(pytz.timezone("Asia/Ho_Chi_Minh")).strftime("%A, %d-%m-%Y %H:%M")
                         response = model.generate_content([
                             {"role": "user", "parts": [f"{prompt}\nPhản hồi ngắn gọn, dưới 1000 byte, chỉ ở dạng văn bản thường (plain text). Không sử dụng Markdown in đậm (**) hoặc in nghiêng (_), không tiêu đề (#). Chú ý thời gian hiện tại là {now}."]},
                         ])
@@ -189,11 +201,11 @@ try:
 except KeyboardInterrupt:
     print("Dừng chương trình")
 finally:
-    #with contextlib.suppress(Exception):
-    sock.close()
-    '''if stream is not None:
+    with contextlib.suppress(Exception):
+        sock.close()
+    if stream is not None:
         with contextlib.suppress(Exception):
             stream.close()
     if porcupine is not None:
         with contextlib.suppress(Exception):
-            porcupine.delete()'''
+            porcupine.delete()
