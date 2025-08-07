@@ -33,6 +33,7 @@ ACTIONS = {
     "ngừng": 0
 }
 NEGATIONS = ["đừng", "không", "thôi", "chữa", "chưa"]
+TERMINATIONS = ["kết thúc", "tắt"]
 FUZZY_THRESHOLD = 80
 
 # Detect command
@@ -59,7 +60,7 @@ ESP32_PORT = 5005
 MAX_PACKET_SIZE = 1024
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, ESP32_PORT))
-sock.settimeout(15) 
+sock.settimeout(1) 
 try:
     data, addr = sock.recvfrom(MAX_PACKET_SIZE)
     print(f"Thiết bị {addr} đã sẵn sàng")
@@ -119,6 +120,71 @@ stream = pa.open(format=pyaudio.paInt16,
 
 print("Đang chờ lệnh đánh thức...")
 
+# Send data
+def sender(input):
+    audio_bytes = asyncio.run(text_to_wav_bytes(input))
+    total_len = len(audio_bytes)
+    sock.sendto(b'\x02' + input.encode(), (ESP32_IP, ESP32_PORT))
+
+    # Gửi từng gói nhỏ
+    for i in range(0, total_len, MAX_PACKET_SIZE):
+        chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
+        sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
+        time.sleep(0.03)
+
+# Conversation handler 
+def handle_conversation():
+    recognizer = sr.Recognizer()
+    mic = sr.Microphone()  
+
+    print("Đang nghe...")
+    welcome = "Chào bạn, tôi có thể giúp gì?"
+    sender(welcome)
+    #if data == "READY":
+    
+    while True:
+        try:               
+            with mic as source:
+                recognizer.adjust_for_ambient_noise(source, duration=1)
+                audio = recognizer.listen(source, phrase_time_limit=10)
+                prompt = recognizer.recognize_google(audio, language='vi-VN')
+                lower_text = prompt.lower()
+            if is_control_command(prompt):
+                print("Bạn đã nói lệnh:", prompt)
+                
+                for cmd, code in ACTIONS.items():
+                    if re.search(rf"\b{re.escape(cmd)}\b", lower_text):
+                        order = f"Đã {cmd}"
+                        sock.sendto(b'\x02' + str(code).encode(), (ESP32_IP, ESP32_PORT))
+                        sender(order)
+                        print(f"Đã gửi lệnh {cmd} đến ESP32")
+                        break
+            elif any(re.search(rf"\b{re.escape(ter)}\b", lower_text) for ter in TERMINATIONS):
+                sleep_word = "Nói Bye Greeen để kết thúc"
+                sender(sleep_word)
+            elif lower_text == "bye green":
+                goodbye = "Tam biệt, hẹn gặp lại!"
+                sender(goodbye)
+                print("Kết thúc chương trình")
+                return
+            else:
+                now = datetime.now(pytz.timezone("Asia/Ho_Chi_Minh")).strftime("%A, %d-%m-%Y %H:%M")
+                response = model.generate_content([
+                    {"role": "user", "parts": [f"{prompt}\nPhản hồi ngắn gọn, dưới 1000 byte, chỉ ở dạng văn bản thường (plain text). Không sử dụng Markdown in đậm (**) hoặc in nghiêng (_), không tiêu đề (#). Chú ý thời gian hiện tại là {now}."]},
+                ])
+                reply = response.text
+                print("Bạn đã nói:", prompt)
+                print(reply)
+                sender(reply)
+
+        except sr.UnknownValueError:
+            print("Không nhận diện được")
+            errorReply = "Không nhận diện được giọng nói, vui lòng thử lại."
+            sender(errorReply)
+        except sr.RequestError as e:
+            print("Lỗi kết nối đến dịch vụ nhận diện giọng nói:", e)
+
+# Main loop
 try:
     while True:
         pcm = stream.read(porcupine.frame_length, exception_on_overflow=False)
@@ -127,76 +193,8 @@ try:
         result = porcupine.process(pcm)
         if result >= 0:
             print("Đã đánh thức!")
-
-            recognizer = sr.Recognizer()
-            mic = sr.Microphone()  
-
-            print("Đang nghe...")
-            welcome = "Chào bạn, tôi có thể giúp gì?"
-            #if data == "READY":
-            while True:
-                try:               
-                    with mic as source:
-                        recognizer.adjust_for_ambient_noise(source, duration=1)
-                        audio = recognizer.listen(source, phrase_time_limit=10)
-                        prompt = recognizer.recognize_google(audio, language='vi-VN')
-                        lower_text = prompt.lower()
-                    if is_control_command(prompt):
-                        print("Bạn đã nói lệnh:", prompt)
-                        
-                        for cmd, code in ACTIONS.items():
-                            if re.search(rf"\b{re.escape(cmd)}\b", lower_text):
-                                order = f"Đã {cmd}"
-                                audio_bytes = asyncio.run(text_to_wav_bytes(order))
-                                total_len = len(audio_bytes)
-                                sock.sendto(b'\x02' + str(code).encode(), (ESP32_IP, ESP32_PORT))
-
-                                # Gửi từng gói nhỏ
-                                for i in range(0, total_len, MAX_PACKET_SIZE):
-                                    chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
-                                    sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
-                                    time.sleep(0.03)
-                                print(f"Đã gửi lệnh {cmd} đến ESP32")
-                                break
-                            
-                    else:
-                        now = datetime.now(pytz.timezone("Asia/Ho_Chi_Minh")).strftime("%A, %d-%m-%Y %H:%M")
-                        response = model.generate_content([
-                            {"role": "user", "parts": [f"{prompt}\nPhản hồi ngắn gọn, dưới 1000 byte, chỉ ở dạng văn bản thường (plain text). Không sử dụng Markdown in đậm (**) hoặc in nghiêng (_), không tiêu đề (#). Chú ý thời gian hiện tại là {now}."]},
-                        ])
-                        reply = response.text
-
-                        print("Bạn đã nói:", prompt)
-                        print(reply)
-                        audio_bytes = asyncio.run(text_to_wav_bytes(reply))
-                        total_len = len(audio_bytes)
-                        sock.sendto(b'\x02' + reply.encode('utf-8'), (ESP32_IP, ESP32_PORT))
-                        
-                        # Gửi từng gói nhỏ
-                        for i in range(0, total_len, MAX_PACKET_SIZE):
-                            chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
-                            sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
-                            time.sleep(0.03)
-
-                except sr.UnknownValueError:
-                    print("Không nhận diện được")
-
-                    errorReply = "Không nhận diện được giọng nói, vui lòng thử lại."
-                    audio_bytes = asyncio.run(text_to_wav_bytes(errorReply))
-                    total_len = len(audio_bytes)
-                    sock.sendto(b'\x02' + errorReply.encode('utf-8'), (ESP32_IP, ESP32_PORT))
-                    
-                    # Gửi từng gói nhỏ
-                    for i in range(0, total_len, MAX_PACKET_SIZE):
-                        chunk = audio_bytes[i:i + MAX_PACKET_SIZE]
-                        sock.sendto(b'\x03' + chunk, (ESP32_IP, ESP32_PORT))
-                        time.sleep(0.03)
-                except sr.RequestError as e:
-                    print("Lỗi kết nối đến dịch vụ nhận diện giọng nói:", e)
-                except KeyboardInterrupt:
-                    print("Dừng chương trình")
-                    break
-            break
+            handle_conversation()
+            print("Quay lại trạng thái chờ kích hoạt...")
 
 except KeyboardInterrupt:
     print("Dừng chương trình")
