@@ -33,7 +33,7 @@ ACTIONS = {
     "ngừng": 0
 }
 NEGATIONS = ["đừng", "không", "thôi", "chữa", "chưa"]
-TERMINATIONS = ["kết thúc", "tắt"]
+TERMINATIONS = ["kết thúc", "hoàn thành"]
 FUZZY_THRESHOLD = 80
 
 # Detect command
@@ -60,7 +60,7 @@ ESP32_PORT = 5005
 MAX_PACKET_SIZE = 1024
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock.bind((UDP_IP, ESP32_PORT))
-sock.settimeout(1) 
+sock.settimeout(5) 
 try:
     data, addr = sock.recvfrom(MAX_PACKET_SIZE)
     print(f"Thiết bị {addr} đã sẵn sàng")
@@ -69,13 +69,13 @@ except socket.timeout:
     print("Thiết bị chưa sẵn sàng, chuẩn bị gửi lệnh đầu tiên...")
     data, addr = None, None
 
-# Configure API_KEY
+# Configure KEY
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
 gen_ai.configure(api_key=API_KEY)
 model = gen_ai.GenerativeModel("gemini-2.5-flash-lite")
 
-access_key = "FpoCjJic8WNWbTsJssh63tI5cG3yfe84hDGoN7vFS850koUZKfDRQA=="
+access_key = os.getenv("WAKEWORD_KEY")
 porcupine = pvporcupine.create(
     access_key=access_key,
     keyword_paths=["C:\\Users\\Admin\\Downloads\\hey-green_en_windows_v3_0_0.ppn"],
@@ -161,9 +161,12 @@ def handle_conversation():
                         break
             elif any(re.search(rf"\b{re.escape(ter)}\b", lower_text) for ter in TERMINATIONS):
                 sleep_word = "Nói Bye Greeen để kết thúc"
+                print("Bạn đã nói:", prompt)
                 sender(sleep_word)
-            elif lower_text == "bye green":
+                print("Chuẩn bị kết thúc chương trình")
+            elif lower_text == "bài green" or lower_text == "bai green" or lower_text == "bài gờ rin" or lower_text == "bai gờ rin":
                 goodbye = "Tam biệt, hẹn gặp lại!"
+                print("Bạn đã nói:", prompt)
                 sender(goodbye)
                 print("Kết thúc chương trình")
                 return

@@ -94,7 +94,7 @@ void packet_handle(void* pv) {
         if (lenText == 1 && (pkt.buf[1] == '0' || pkt.buf[1] == '1')) {
           bool on = (pkt.buf[1] == '1');
           digitalWrite(RELAY_PIN, on ? HIGH : LOW);
-          Serial.println(on ? "-> đã bật" : "-> đã tắt");
+          //Serial.println(on ? "-> đã bật" : "-> đã tắt");
         }
 
       } else if (type == PACKET_AUDIO) {
