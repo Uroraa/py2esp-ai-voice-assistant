@@ -10,6 +10,10 @@ import time
 from datetime import datetime 
 import pytz
 import speech_recognition as sr
+import sounddevice as sd
+from speech_recognition import audio
+from faster_whisper import WhisperModel
+import numpy as np
 import pvporcupine
 import pyaudio
 import struct
@@ -133,22 +137,35 @@ def sender(input):
         time.sleep(0.03)
 
 # Conversation handler 
-def handle_conversation():
-    recognizer = sr.Recognizer()
-    mic = sr.Microphone()  
+'''recognizer = sr.Recognizer()
+mic = sr.Microphone()
+with mic as source:
+    recognizer.adjust_for_ambient_noise(source, duration=2)
+    recognizer.pause_threshold = 1.0'''
+voice_model = WhisperModel("small", device="cuda")
 
-    print("Đang nghe...")
+
+
+def handle_conversation():
+    
     welcome = "Chào bạn, tôi có thể giúp gì?"
     sender(welcome)
     #if data == "READY":
     
     while True:
-        try:               
-            with mic as source:
-                recognizer.adjust_for_ambient_noise(source, duration=1)
-                audio = recognizer.listen(source, phrase_time_limit=10)
-                prompt = recognizer.recognize_google(audio, language='vi-VN')
-                lower_text = prompt.lower()
+        try:         
+            print("Đang nghe...")
+            '''with mic as source:
+                audio = recognizer.listen(source)
+                prompt = recognizer.recognize_google(audio, language='vi-VN', show_all=False)'''
+            audio = sd.rec(int(3 * 16000), samplerate=16000, channels=1, dtype='float32')
+            sd.wait()
+            audio = np.squeeze(audio)
+            segments, _ = voice_model.transcribe(audio, language="vi")
+            prompt = ""
+            for segment in segments:
+                prompt += segment.text + " "
+            lower_text = prompt.lower()
             if is_control_command(prompt):
                 print("Bạn đã nói lệnh:", prompt)
                 
@@ -160,11 +177,11 @@ def handle_conversation():
                         print(f"Đã gửi lệnh {cmd} đến ESP32")
                         break
             elif any(re.search(rf"\b{re.escape(ter)}\b", lower_text) for ter in TERMINATIONS):
-                sleep_word = "Nói Bye Greeen để kết thúc"
+                sleep_word = "Nói Bye Green để kết thúc"
                 print("Bạn đã nói:", prompt)
                 sender(sleep_word)
                 print("Chuẩn bị kết thúc chương trình")
-            elif lower_text == "bài green" or lower_text == "bai green" or lower_text == "bài gờ rin" or lower_text == "bai gờ rin":
+            elif lower_text in ("bài green", "by green", "bãi green", "bye green"):
                 goodbye = "Tam biệt, hẹn gặp lại!"
                 print("Bạn đã nói:", prompt)
                 sender(goodbye)
@@ -173,7 +190,7 @@ def handle_conversation():
             else:
                 now = datetime.now(pytz.timezone("Asia/Ho_Chi_Minh")).strftime("%A, %d-%m-%Y %H:%M")
                 response = model.generate_content([
-                    {"role": "user", "parts": [f"{prompt}\nPhản hồi ngắn gọn, dưới 1000 byte, chỉ ở dạng văn bản thường (plain text). Không sử dụng Markdown in đậm (**) hoặc in nghiêng (_), không tiêu đề (#). Chú ý thời gian hiện tại là {now}."]},
+                    {"role": "user", "parts": [f"{prompt}\nPhản hồi ngắn gọn, không quá 50 từ, dưới 3 câu ngắn hoặc 3 ý ngắn, chỉ làm rõ câu trước nếu được hỏi, câu làm rõ cũng không quá 3 câu hoặc 3 ý ngắn, chỉ ở dạng văn bản thường (plain text). Không sử dụng Markdown in đậm (**) hoặc in nghiêng (_), không tiêu đề (#). Chú ý thời gian hiện tại là {now}."]},
                 ])
                 reply = response.text
                 print("Bạn đã nói:", prompt)
