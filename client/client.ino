@@ -21,7 +21,7 @@ const char* password = "123456789@";
 #define LED_PIN 48
 #define RELAY_PIN 5
 #define MAX_PACKET_SIZE 1200
-#define QUEUE_LENGTH 10
+#define QUEUE_LENGTH 15
 #define SERVER_IP "192.168.2.17"
 #define LOCAL_PORT 5005
 
@@ -74,7 +74,7 @@ void packet_recv(void* pv) {
     if (packet_size > 0 && packet_size <= MAX_PACKET_SIZE) {
       int length = UDP.read(pkt.buf, packet_size);
       pkt.len = (uint16_t)length;
-      xQueueSend(audioQueue, &pkt, portMAX_DELAY);
+      if (xQueueSend(audioQueue, &pkt, pdMS_TO_TICKS(20) != pdPASS)){}
     }
     vTaskDelay(pdMS_TO_TICKS(1));
   }
@@ -165,7 +165,7 @@ void setup() {
   }
 
   xTaskCreatePinnedToCore(packet_recv, "Packet Receiver", 4096, nullptr, 2, nullptr, 1);
-  xTaskCreatePinnedToCore(packet_handle, "Packet Handle", 8192, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(packet_handle, "Packet Handle", 8192, nullptr, 2, nullptr, 0);
 }
 
 void loop() {
